@@ -3,27 +3,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h> // for getopt
-#include <stdbool.h> // for bool type
-#include <libgen.h> // for dirname
+#include <unistd.h>
+#include <errno.h> // for errno
+#include <time.h>  // for ctime
 
 #define PATH_MAX 1024
 
-// Function to update snapshot for a single directory
 void updateSnapshot(const char *dir_path, const char *output_dir) {
-    // Open directory
     DIR *dir = opendir(dir_path);
     if (dir == NULL) {
         perror("opendir");
         return;
     }
 
-    // Determine output path for snapshot file
     char output_path[PATH_MAX];
     snprintf(output_path, sizeof(output_path), "%s/snapshot.txt", output_dir);
 
-    // Create or open snapshot file
-    FILE *snapshot_file = fopen(output_path, "a"); // Append to existing or create new
+    FILE *snapshot_file = fopen(output_path, "w"); // Create or overwrite
     if (snapshot_file == NULL) {
         perror("fopen");
         closedir(dir);
@@ -32,7 +28,6 @@ void updateSnapshot(const char *dir_path, const char *output_dir) {
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        // Skip "." and ".." entries
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
@@ -45,8 +40,10 @@ void updateSnapshot(const char *dir_path, const char *output_dir) {
             continue;
         }
 
-        // Write entry and its modification time to the snapshot file
-        fprintf(snapshot_file, "%s %ld\n", entry->d_name, st.st_mtime);
+        fprintf(snapshot_file, "%s %ld %lo %lld %c\n", entry->d_name, st.st_mtime,
+                (unsigned long)st.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO),
+                (long long)st.st_size,
+                (S_ISDIR(st.st_mode)) ? 'd' : 'f');
     }
 
     closedir(dir);
@@ -57,7 +54,6 @@ int main(int argc, char *argv[]) {
     int opt;
     char *output_dir = NULL;
 
-    // Parse command line options using getopt
     while ((opt = getopt(argc, argv, "o:")) != -1) {
         switch (opt) {
             case 'o':
@@ -69,13 +65,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Check if output directory is provided
     if (output_dir == NULL) {
         fprintf(stderr, "Output directory not specified.\n");
         return 1;
     }
 
-    // Process input directories after options
     for (int i = optind; i < argc; i++) {
         updateSnapshot(argv[i], output_dir);
     }
